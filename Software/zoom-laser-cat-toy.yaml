@@ -1,0 +1,131 @@
+substitutions:
+  name: zoom-laser-cat-toy
+
+esphome:
+  name: $name
+  platform: ESP8266
+  board: d1_mini
+
+wifi:
+  fast_connect: true
+  power_save_mode: LIGHT
+  password: !secret wifi_psk
+  ssid: !secret wifi_ssid
+  manual_ip:
+    static_ip: 10.43.9.227
+    gateway: 10.43.9.1
+    subnet: 255.255.255.0
+    dns1: 10.42.5.10
+
+logger:
+  baud_rate: 0
+  level: DEBUG
+ota:
+  safe_mode: true
+  password: !secret api_password
+  on_end:
+    then:
+      - mqtt.publish:
+          topic: $name/ota_mode
+          payload: "OFF"
+          retain: true
+      - logger.log: "OTA mode turned off"
+      - delay: 2s
+
+mqtt:
+  broker: !secret mqtt_host
+  port: !secret mqtt_port
+  username: !secret mqtt_user
+  password: !secret mqtt_password
+  discovery: true
+  keepalive: 30s
+  on_message:
+    - topic: $name/ota_mode
+      payload: "ON"
+      then:
+        - deep_sleep.prevent: sleepy
+        - logger.log: "OTA mode enabled"
+        - output.turn_on: stat
+    - topic: $name/sleep_mode
+      payload: "ON"
+      then:
+        - logger.log: "Sleep mode enabled"
+        - mqtt.publish:
+            topic: $name/sleep_mode
+            payload: "OFF"
+            retain: true
+        - logger.log: "Turned off sleep mode switch"
+        - output.turn_off: stat
+        - delay: 2s
+        - deep_sleep.enter: sleepy
+
+# status_led:
+#   pin: D4
+
+deep_sleep:
+  id: sleepy
+  run_duration: 1s
+  sleep_duration: 30s
+
+button:
+  - platform: template
+    command_retain: true
+    name: Button
+    id: zoom_button
+    icon: mdi:laser-pointer
+    on_press:
+      then:
+        # unpress the button
+        - logger.log: "GOT A PRESS"
+        - mqtt.publish:
+            topic: $name/button/button/command
+            payload: null
+            retain: true
+        - output.turn_on: zoom_button_output
+        - delay: 100ms
+        - output.turn_off: zoom_button_output
+
+output:
+  - platform: gpio
+    pin:
+      number: D5
+      inverted: false
+    id: zoom_button_output
+
+  - platform: gpio
+    pin:
+      number: D4
+      inverted: true
+    id: stat
+# sensor:
+#   - platform: adc
+#     pin: A0
+#     name: "Battery Voltage"
+#     update_interval: 2s
+#     icon: mdi:battery
+#     filters:
+#       - calibrate_polynomial:
+#           degree: 6
+#           datapoints:
+#             - 0.90625 -> 9.006
+#             - 0.84473 -> 8.507
+#             - 0.79199 -> 8.005
+#             - 0.74219 -> 7.505
+#             - 0.69434 -> 7.007
+#             - 0.65723 -> 6.506
+#             - 0.59180 -> 6.007
+#             # - 0.01172 -> 0.000
+
+# switch:
+#   - platform: template
+#     command_retain: true
+#     name: "OTA Mode"
+#     id: ota_mode_switch
+#     icon: mdi:upload
+#     turn_on_action:
+#       - logger.log: "OTA Mode enabled"
+#       - deep_sleep.prevent: sleepy
+#     turn_off_action:
+#       - logger.log: "OTA Mode disabled"
+#       - delay: 2s
+#       - deep_sleep.enter: sleepy
